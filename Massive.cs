@@ -72,10 +72,17 @@ namespace Massive {
             if (o.GetType() == typeof(NameValueCollection) || o.GetType().IsSubclassOf(typeof(NameValueCollection))) {
                 var nv = (NameValueCollection)o;
                 nv.Cast<string>().Select(key => new KeyValuePair<string, object>(key, nv[key])).ToList().ForEach(i => d.Add(i));
-            } else {
-                var props = o.GetType().GetProperties();
-                foreach (var item in props) {
-                    d.Add(item.Name, item.GetValue(o, null));
+            } else { //modified by Jone - In case object o is already a Dictionary<String, Object>, we'll not use reflection.
+                if (o is IDictionary<string, object>) {
+                    var dict = (IDictionary<string, object>)o;
+                    foreach (var key in dict.Keys) {
+                        d[key] = dict[key];
+                    }
+                } else {
+                    var props = o.GetType().GetProperties();
+                    foreach (var item in props) {
+                        d.Add(item.Name, item.GetValue(o, null));
+                    }
                 }
             }
             return result;
@@ -85,6 +92,9 @@ namespace Massive {
         /// Turns the object into a Dictionary
         /// </summary>
         public static IDictionary<string, object> ToDictionary(this object thingy) {
+            //todo: modified por Jone - Doesn't need conversions if thingy already implements is a dictionary
+            if (thingy is IDictionary<string, object>)
+                return (IDictionary<string, object>)thingy;
             return (IDictionary<string, object>)thingy.ToExpando();
         }
     }
@@ -102,7 +112,7 @@ namespace Massive {
             }
         }
     }
-    
+
     /// <summary>
     /// A class that wraps your database table in Dynamic Funtime
     /// </summary>
@@ -119,10 +129,10 @@ namespace Massive {
             PrimaryKeyField = string.IsNullOrEmpty(primaryKeyField) ? "ID" : primaryKeyField;
             DescriptorField = descriptorField;
             var _providerName = "System.Data.SqlClient";
-            
-            if(ConfigurationManager.ConnectionStrings[connectionStringName].ProviderName != null)
+
+            if (ConfigurationManager.ConnectionStrings[connectionStringName].ProviderName != null)
                 _providerName = ConfigurationManager.ConnectionStrings[connectionStringName].ProviderName;
-            
+
             _factory = DbProviderFactories.GetFactory(_providerName);
             ConnectionString = ConfigurationManager.ConnectionStrings[connectionStringName].ConnectionString;
         }
@@ -204,7 +214,7 @@ namespace Massive {
         public virtual IEnumerable<dynamic> Query(string sql, DbConnection connection, params object[] args) {
             using (var rdr = CreateCommand(sql, connection, args).ExecuteReader()) {
                 while (rdr.Read()) {
-                    yield return rdr.RecordToExpando(); ;
+                    yield return rdr.RecordToExpando();
                 }
             }
         }
@@ -318,18 +328,15 @@ namespace Massive {
         /// <summary>
         /// Returns a dynamic PagedResult. Result properties are Items, TotalPages, and TotalRecords.
         /// </summary>
-        public virtual dynamic Paged(string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args)
-        {
+        public virtual dynamic Paged(string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args) {
             return BuildPagedResult(where: where, orderBy: orderBy, columns: columns, pageSize: pageSize, currentPage: currentPage, args: args);
         }
 
-        public virtual dynamic Paged(string sql, string primaryKey, string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args)
-        {
+        public virtual dynamic Paged(string sql, string primaryKey, string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args) {
             return BuildPagedResult(sql, primaryKey, where, orderBy, columns, pageSize, currentPage, args);
         }
 
-        private dynamic BuildPagedResult(string sql = "", string primaryKeyField = "", string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args)
-        {
+        private dynamic BuildPagedResult(string sql = "", string primaryKeyField = "", string where = "", string orderBy = "", string columns = "*", int pageSize = 20, int currentPage = 1, params object[] args) {
             dynamic result = new ExpandoObject();
             var countSQL = "";
             if (!string.IsNullOrEmpty(sql))
@@ -337,15 +344,12 @@ namespace Massive {
             else
                 countSQL = string.Format("SELECT COUNT({0}) FROM {1}", PrimaryKeyField, TableName);
 
-            if (String.IsNullOrEmpty(orderBy))
-            {
+            if (String.IsNullOrEmpty(orderBy)) {
                 orderBy = string.IsNullOrEmpty(primaryKeyField) ? PrimaryKeyField : primaryKeyField;
             }
 
-            if (!string.IsNullOrEmpty(where))
-            {
-                if (!where.Trim().StartsWith("where", StringComparison.CurrentCultureIgnoreCase))
-                {
+            if (!string.IsNullOrEmpty(where)) {
+                if (!where.Trim().StartsWith("where", StringComparison.CurrentCultureIgnoreCase)) {
                     where = " WHERE " + where;
                 }
             }
@@ -585,8 +589,8 @@ namespace Massive {
         public int Count() {
             return Count(TableName);
         }
-        public int Count(string tableName, string where="", params object[] args) {
-            return (int)Scalar("SELECT COUNT(*) FROM " + tableName+" "+ where, args);
+        public int Count(string tableName, string where = "", params object[] args) {
+            return (int)Scalar("SELECT COUNT(*) FROM " + tableName + " " + where, args);
         }
 
         /// <summary>
